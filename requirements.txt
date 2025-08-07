@@ -1,0 +1,7 @@
+customtkinter
+ccxt
+requests
+pandas
+numpy
+SQLAlchemy
+Pillow
