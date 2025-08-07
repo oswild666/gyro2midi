@@ -13,9 +13,10 @@ class ApiClient:
         try:
             self.bybit = ccxt.bybit({'rateLimit': True})
             self.binance = ccxt.binance({'rateLimit': True})
-            self.bybit.load_markets()
-            self.binance.load_markets()
-            logging.info("Успешно подключился к Bybit и Binance.")
+            # Убираем load_markets() из конструктора.
+            # ccxt будет загружать рынки "лениво" при первом реальном запросе.
+            # Это делает запуск более устойчивым к временным сетевым сбоям.
+            logging.info("Успешно инициализированы клиенты для Bybit и Binance.")
         except Exception as e:
             logging.error(f"Ошибка при инициализации ccxt: {e}")
             self.bybit = None
