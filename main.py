@@ -26,8 +26,13 @@ class AppController:
         self.app = App(controller=self)
 
     def run(self):
-        """Запускает главный цикл приложения."""
+        """Запускает приложение и циклы обновления."""
         logging.info("Starting the application...")
+
+        # Запускаем циклы обновления GUI после того, как приложение полностью инициализировано.
+        self.app.after(100, self.app._btc_update_loop)
+        self.app.after(500, self.app._table_update_loop)
+
         self.app.mainloop()
 
 if __name__ == "__main__":
