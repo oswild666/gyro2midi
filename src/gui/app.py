@@ -36,12 +36,15 @@ class App(ctk.CTk):
         self._create_status_bar()
 
         # ---- Запуск циклов обновления ----
-        self._btc_update_loop()
-        self._table_update_loop()
+        # Запускаем циклы не напрямую, а через планировщик `after`.
+        # Это гарантирует, что конструктор __init__ успеет полностью завершиться.
+        self.after(100, self._btc_update_loop)
+        self.after(500, self._table_update_loop) # Небольшая задержка для первого запуска
 
     def _load_star_image(self):
         """Загружает изображение звезды из URL."""
-        url = "https://publicdomainvectors.org/photos/1530113431.png" # Проверенная ссылка на PNG
+        # Новый, более надежный URL с прямого хостинга изображений
+        url = "https://upload.wikimedia.org/wikipedia/commons/2/29/White_star_c.png"
         try:
             response = requests.get(url, timeout=10)
             response.raise_for_status()
