@@ -15,11 +15,11 @@ class App(ctk.CTk):
 
         # ---- Окно ----
         self.title("Воровское казино")
-        self.geometry("770x666")
+        # Увеличим ширину окна для новых колонок
+        self.geometry("960x666")
         ctk.set_appearance_mode("dark")
 
         # ---- Переменные ----
-        # Убираем загрузку изображения, используем текстовый символ
         self.original_star_image = None
         self.star_angle = 0
         self.btc_price_history = deque(maxlen=4)
@@ -38,37 +38,30 @@ class App(ctk.CTk):
         header_frame = ctk.CTkFrame(self, corner_radius=0)
         header_frame.grid(row=0, column=0, sticky="ew", padx=10, pady=5)
         header_frame.grid_columnconfigure(0, weight=1)
-
         title_label = ctk.CTkLabel(header_frame, text="это воровское казино", font=ctk.CTkFont(size=24, weight="bold"))
         title_label.grid(row=0, column=0, padx=20, pady=10, sticky="w")
-
-        # Используем текстовый символ вместо изображения
         self.star_label = ctk.CTkLabel(header_frame, text="✴", font=ctk.CTkFont(size=60))
         self.star_label.grid(row=0, column=1, padx=20, pady=10, sticky="e")
 
     def rotate_star(self, direction: int):
-        """Анимирует звезду изменением цвета. direction: 1 для вправо, -1 для влево, 0 для стоп."""
+        # Рост (bull run) = черный, падение = красный
         if direction == 1:
-            self.star_label.configure(text_color="green")
+            self.star_label.configure(text_color="black")
         elif direction == -1:
             self.star_label.configure(text_color="red")
         else:
             self.star_label.configure(text_color="white")
 
     def _btc_update_loop(self):
-        """Цикл обновления данных по BTC, работающий в главном потоке GUI."""
         try:
             prices = self.controller.api_client.get_btc_price_comparison()
             bybit_price = prices.get('bybit')
             binance_price = prices.get('binance')
-
             self.update_status("bybit", bybit_price is not None)
             self.update_status("binance", binance_price is not None)
-
             if binance_price:
                 self.btc_price_history.append(binance_price)
                 self._handle_animation()
-
             self.update_btc_display(binance_price, bybit_price)
         except Exception as e:
             logging.error(f"Ошибка в цикле обновления BTC: {e}")
@@ -76,11 +69,9 @@ class App(ctk.CTk):
             self.after(10000, self._btc_update_loop)
 
     def _table_update_loop(self):
-        """Запускает воркер для обновления таблицы в фоновом потоке."""
         threading.Thread(target=self._table_update_worker, daemon=True).start()
 
     def _table_update_worker(self):
-        """Воркер, выполняющий сбор данных для таблицы в фоновом потоке."""
         try:
             logging.info("Starting full market data update...")
             api_client = self.controller.api_client
@@ -91,8 +82,16 @@ class App(ctk.CTk):
             tickers = tickers[:20]
 
             db_manager.update_coins(tickers)
-            prices = api_client.fetch_prices('bybit', tickers)
-            db_manager.save_prices(prices)
+
+            # 1. Получаем комплексные данные (цена, high, low)
+            full_price_data = api_client.fetch_prices('bybit', tickers)
+
+            # 2. Разделяем данные для разных таблиц БД
+            prices_to_save = {t: d['price'] for t, d in full_price_data.items() if d.get('price') is not None}
+            daily_data_to_save = {t: {'high': d['high'], 'low': d['low']} for t, d in full_price_data.items() if d.get('high') is not None}
+
+            db_manager.save_prices(prices_to_save)
+            db_manager.save_daily_data(daily_data_to_save) # Сохраняем high/low
 
             market_caps = api_client.get_market_caps(tickers)
             self.after(0, lambda: self.update_status("coingecko", bool(market_caps)))
@@ -100,9 +99,12 @@ class App(ctk.CTk):
             table_data = []
             for ticker in tickers:
                 history = db_manager.get_price_history(ticker, datetime.utcnow() - timedelta(hours=24))
+                ticker_info = full_price_data.get(ticker, {})
                 table_data.append({
                     'ticker': ticker,
-                    'price': prices.get(ticker),
+                    'price': ticker_info.get('price'),
+                    'high': ticker_info.get('high'),
+                    'low': ticker_info.get('low'),
                     'market_cap': market_caps.get(ticker, {}).get('market_cap'),
                     'changes': DataCalculator.calculate_price_changes(history)
                 })
@@ -115,20 +117,15 @@ class App(ctk.CTk):
             self.after(60000, self._table_update_loop)
 
     def _handle_animation(self):
-        """Определяет направление тренда и запускает анимацию."""
-        if len(self.btc_price_history) < 4:
-            direction = 0
+        if len(self.btc_price_history) < 4: direction = 0
         else:
             price_now = self.btc_price_history[-1]
             price_30s_ago = self.btc_price_history[0]
-
             if price_now > price_30s_ago: direction = 1
             elif price_now < price_30s_ago: direction = -1
             else: direction = 0
-
         self.rotate_star(direction)
 
-    # --- Остальные методы без изменений ---
     def _create_btc_display(self):
         btc_frame = ctk.CTkFrame(self)
         btc_frame.grid(row=1, column=0, sticky="ew", padx=10, pady=5)
@@ -150,8 +147,9 @@ class App(ctk.CTk):
     def _create_table_placeholder(self):
         self.table_frame = ctk.CTkScrollableFrame(self, label_text="Рыночные данные")
         self.table_frame.grid(row=2, column=0, sticky="nsew", padx=10, pady=5)
-        self.table_frame.grid_columnconfigure((0,1,2,3,4,5,6,7,8,9), weight=1)
-        self.table_headers = ["Тикер", "Цена", "Капитализация", "5m", "15m", "30m", "1h", "4h", "12h", "24h"]
+        # Добавляем 2 колонки
+        self.table_frame.grid_columnconfigure(tuple(range(12)), weight=1)
+        self.table_headers = ["Тикер", "Цена", "24h High", "24h Low", "Капитализация", "5m", "15m", "30m", "1h", "4h", "12h", "24h"]
         self.table_data = []
         self.table_widgets = []
         self.sort_column = 0
@@ -162,11 +160,24 @@ class App(ctk.CTk):
 
     def _sort_table_by_column(self, column_index: int):
         header = self.table_headers[column_index]
-        if self.sort_column == column_index: self.sort_reverse = not self.sort_reverse
-        else: self.sort_reverse = False
+        if self.sort_column == column_index:
+            self.sort_reverse = not self.sort_reverse
+        else:
+            self.sort_reverse = False
+
         self.sort_column = column_index
+
+        # Обновляем текст на кнопках-заголовках
+        for i, h in enumerate(self.table_headers):
+            button = self.table_frame.grid_slaves(row=0, column=i)[0]
+            text = h
+            if i == column_index:
+                text += ' ↓' if self.sort_reverse else ' ↑'
+            button.configure(text=text)
+
         key_func = {
             "Тикер": lambda i: i.get('ticker', ''), "Цена": lambda i: i.get('price', 0) or 0,
+            "24h High": lambda i: i.get('high', 0) or 0, "24h Low": lambda i: i.get('low', 0) or 0,
             "Капитализация": lambda i: i.get('market_cap', 0) or 0,
             "5m": lambda i: i.get('changes', {}).get('5m', -999) or -999, "15m": lambda i: i.get('changes', {}).get('15m', -999) or -999,
             "30m": lambda i: i.get('changes', {}).get('30m', -999) or -999, "1h": lambda i: i.get('changes', {}).get('1h', -999) or -999,
@@ -187,18 +198,34 @@ class App(ctk.CTk):
         self.table_widgets = []
         for row_index, coin_data in enumerate(self.table_data, start=1):
             row_widgets = []
-            ticker = coin_data.get('ticker', '--')
-            price = f"${coin_data.get('price', 0):,.2f}"
-            market_cap = f"${coin_data.get('market_cap', 0):,.0f}" if coin_data.get('market_cap') else "--"
             changes = coin_data.get('changes', {})
-            columns = [ticker, price, market_cap, changes.get('5m'), changes.get('15m'), changes.get('30m'), changes.get('1h'), changes.get('4h'), changes.get('12h'), changes.get('24h')]
-            for col_index, item in enumerate(columns):
+            # Форматируем данные для отображения
+            columns_data = {
+                "Тикер": coin_data.get('ticker', '--'),
+                "Цена": f"${coin_data.get('price', 0):,.4f}" if coin_data.get('price') else "--",
+                "24h High": f"${coin_data.get('high', 0):,.4f}" if coin_data.get('high') else "--",
+                "24h Low": f"${coin_data.get('low', 0):,.4f}" if coin_data.get('low') else "--",
+                "Капитализация": f"${coin_data.get('market_cap', 0):,.0f}" if coin_data.get('market_cap') else "--",
+                "5m": changes.get('5m'), "15m": changes.get('15m'), "30m": changes.get('30m'),
+                "1h": changes.get('1h'), "4h": changes.get('4h'), "12h": changes.get('12h'), "24h": changes.get('24h')
+            }
+
+            for col_index, header in enumerate(self.table_headers):
+                item = columns_data.get(header)
                 text = str(item) if item is not None else "--"
                 color = "white"
-                if col_index > 2 and item is not None:
+                is_change_col = header in ["5m", "15m", "30m", "1h", "4h", "12h", "24h"]
+
+                # Раскрашиваем процентные изменения
+                if is_change_col and item is not None:
                     text = f"{item:+.2f}%"
                     color = "green" if item > 0 else "red"
-                label = ctk.CTkLabel(self.table_frame, text=text, text_color=color)
+
+                label_font = ctk.CTkFont(size=11)
+                label_width = 60 if is_change_col else None # Фиксированная ширина для % колонок
+
+                label = ctk.CTkLabel(self.table_frame, text=text, text_color=color, font=label_font, width=label_width)
+                # Явно задаем anchor="w" для прижатия текста к левому краю внутри виджета
                 label.grid(row=row_index, column=col_index, padx=5, pady=2, sticky="w")
                 row_widgets.append(label)
             self.table_widgets.append(row_widgets)

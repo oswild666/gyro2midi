@@ -64,35 +64,35 @@ class DatabaseManager:
             self.session.bulk_save_objects(prices_to_add)
             self.session.commit()
 
-    def save_daily_data(self, daily_market_data: dict):
+    def save_daily_data(self, daily_data_map: dict):
         """
-        Сохраняет или обновляет ежедневные данные (капитализация, ранг) для монет.
-        daily_market_data: Словарь вида {'BTC/USDT': {'rank': 1, 'market_cap': 1.2e12}}
+        Сохраняет или обновляет различные ежедневные данные для монет.
+        daily_data_map: Словарь вида {'BTC/USDT': {'rank': 1, 'high': 68000, ...}}
         """
         coin_ids = self.get_coin_ids()
         today = datetime.utcnow().date()
 
-        for ticker, data in daily_market_data.items():
+        for ticker, data in daily_data_map.items():
             coin_id = coin_ids.get(ticker)
             if not coin_id:
                 continue
 
-            # Ищем существующую запись за сегодня
             daily_entry = self.session.query(DailyData).filter_by(coin_id=coin_id, date=today).first()
 
-            if daily_entry:
-                # Обновляем, если нашли
-                daily_entry.market_cap_rank = data.get('rank')
-                daily_entry.market_cap = data.get('market_cap')
-            else:
-                # Создаем новую, если не нашли
-                daily_entry = DailyData(
-                    coin_id=coin_id,
-                    date=today,
-                    market_cap_rank=data.get('rank'),
-                    market_cap=data.get('market_cap')
-                )
+            if not daily_entry:
+                daily_entry = DailyData(coin_id=coin_id, date=today)
                 self.session.add(daily_entry)
+
+            # Обновляем поля, если они переданы в словаре data
+            if 'rank' in data:
+                daily_entry.market_cap_rank = data['rank']
+            if 'market_cap' in data:
+                daily_entry.market_cap = data['market_cap']
+            if 'high' in data:
+                daily_entry.high_price_today = data['high']
+            if 'low' in data:
+                daily_entry.low_price_today = data['low']
+            # Можно добавить yesterday_high/low и volume, если понадобится
 
         self.session.commit()
 

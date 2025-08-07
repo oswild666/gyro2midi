@@ -45,8 +45,8 @@ class ApiClient:
 
     def fetch_prices(self, exchange_name: str, tickers: list) -> dict:
         """
-        Получает последние цены для списка тикеров с указанной биржи.
-        Возвращает словарь {тикер: цена}.
+        Получает последние цены, 24ч high/low для списка тикеров с биржи.
+        Возвращает словарь {тикер: {'price': цена, 'high': максимум, 'low': минимум}}.
         """
         exchange = getattr(self, exchange_name, None)
         if not exchange:
@@ -56,17 +56,20 @@ class ApiClient:
         if not tickers:
             return {}
 
-        prices = {}
+        results = {}
         try:
-            # fetch_tickers - более эффективный способ получить данные по многим тикерам
             ticker_data = exchange.fetch_tickers(tickers)
             for ticker, data in ticker_data.items():
-                if data and 'last' in data:
-                    prices[ticker] = data['last']
+                if data:
+                    results[ticker] = {
+                        'price': data.get('last'),
+                        'high': data.get('high'),
+                        'low': data.get('low')
+                    }
         except Exception as e:
             logging.error(f"Ошибка при получении цен с {exchange_name}: {e}")
 
-        return prices
+        return results
 
     def get_btc_price_comparison(self) -> dict:
         """
