@@ -222,10 +222,18 @@ class App(ctk.CTk):
                     color = "green" if item > 0 else "red"
 
                 label_font = ctk.CTkFont(size=11)
-                label_width = 60 if is_change_col else None # Фиксированная ширина для % колонок
 
-                label = ctk.CTkLabel(self.table_frame, text=text, text_color=color, font=label_font, width=label_width)
-                # Явно задаем anchor="w" для прижатия текста к левому краю внутри виджета
+                # Собираем аргументы для виджета
+                kwargs = {
+                    'text': text,
+                    'text_color': color,
+                    'font': label_font,
+                    'anchor': 'w' # Прижимаем текст к левому краю внутри виджета
+                }
+                if is_change_col:
+                    kwargs['width'] = 60 # Задаем ширину только для нужных колонок
+
+                label = ctk.CTkLabel(self.table_frame, **kwargs)
                 label.grid(row=row_index, column=col_index, padx=5, pady=2, sticky="w")
                 row_widgets.append(label)
             self.table_widgets.append(row_widgets)
