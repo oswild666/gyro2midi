@@ -3,10 +3,17 @@ from PIL import Image, ImageTk
 import requests
 from io import BytesIO
 import logging
+from collections import deque
+import threading
+from datetime import datetime, timedelta
+
+# Импортируем калькулятор напрямую, т.к. GUI теперь сам считает некоторые вещи
+from analysis.calculator import DataCalculator
 
 class App(ctk.CTk):
-    def __init__(self):
+    def __init__(self, controller):
         super().__init__()
+        self.controller = controller
 
         # ---- Окно ----
         self.title("Воровское казино")
@@ -16,6 +23,7 @@ class App(ctk.CTk):
         # ---- Переменные ----
         self.star_angle = 0
         self.original_star_image = self._load_star_image()
+        self.btc_price_history = deque(maxlen=4)
 
         # ---- Лэйаут ----
         self.grid_columnconfigure(0, weight=1)
@@ -26,6 +34,10 @@ class App(ctk.CTk):
         self._create_btc_display()
         self._create_table_placeholder()
         self._create_status_bar()
+
+        # ---- Запуск циклов обновления ----
+        self._btc_update_loop()
+        self._table_update_loop()
 
     def _load_star_image(self):
         """Загружает изображение звезды из URL."""
